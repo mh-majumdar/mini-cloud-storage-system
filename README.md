@@ -217,14 +217,3 @@ The upload endpoint uses MySQL's `SELECT ... FOR UPDATE` inside a database trans
 7. Commit transaction and release locks
 
 Any other upload request for the same user that arrives during this window will wait at step 2 until the first transaction finishes.
-
----
-
-
-## Assumptions
-
-- Users are pre-created via the seeder (no registration endpoint needed)
-- No authentication or authorization is implemented
-- File content is not stored — only metadata
-- `file_hash` is provided by the client (the API trusts it)
-- Storage limit is hardcoded to 500 MB
