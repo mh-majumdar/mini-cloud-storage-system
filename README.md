@@ -189,40 +189,6 @@ GET /users/{user_id}/files
 
 ---
 
-## Sample curl Commands
-
-```bash
-# Upload a file
-curl -X POST http://localhost:8000/api/users/1/files \
-  -H "Content-Type: application/json" \
-  -d '{"file_name":"report.pdf","file_size":10485760,"file_hash":"abc123"}'
-
-# Upload another file
-curl -X POST http://localhost:8000/api/users/1/files \
-  -H "Content-Type: application/json" \
-  -d '{"file_name":"photo.jpg","file_size":2097152,"file_hash":"xyz789"}'
-
-# List user files
-curl http://localhost:8000/api/users/1/files
-
-# Get storage summary
-curl http://localhost:8000/api/users/1/storage-summary
-
-# Delete a file
-curl -X DELETE http://localhost:8000/api/users/1/files/1
-
-# Try uploading a file that exceeds storage (500 MB+ in one go)
-curl -X POST http://localhost:8000/api/users/2/files \
-  -H "Content-Type: application/json" \
-  -d '{"file_name":"huge.bin","file_size":524288001,"file_hash":"big999"}'
-
-# Upload same hash from different user (deduplication test)
-curl -X POST http://localhost:8000/api/users/2/files \
-  -H "Content-Type: application/json" \
-  -d '{"file_name":"report.pdf","file_size":10485760,"file_hash":"abc123"}'
-```
-
----
 
 ## Design Decisions
 
@@ -235,7 +201,7 @@ No actual file content is stored on disk — only metadata (name, size, hash, ti
 ### Soft Deletes
 Files are not physically removed from the database — they get a `deleted_at` timestamp. This makes it easy to track history, and deleted files automatically stop counting toward quota since all queries filter on `deleted_at IS NULL`.
 
-### Deduplication (Bonus)
+### Deduplication
 The `file_stores` table holds one row per unique `file_hash`. When multiple users upload files with the same hash, they share the same `file_store` record. A `ref_count` column tracks how many active file records point to each store entry. When the last reference is deleted, the store record is cleaned up.
 
 ### Concurrency Handling
@@ -254,23 +220,6 @@ Any other upload request for the same user that arrives during this window will 
 
 ---
 
-## Scaling to 100K Users
-
-If this system needed to handle 100K users, here are the key changes:
-
-1. **Database indexing** — Add proper indexes on `user_id`, `file_hash`, and `deleted_at` columns. The current schema already has foreign keys which create indexes, but composite indexes like `(user_id, deleted_at)` would help with the frequent "active files for user X" queries.
-
-2. **Read replicas** — The read-heavy endpoints (list files, storage summary) can be routed to MySQL read replicas, reducing load on the primary.
-
-3. **Caching** — Cache the storage summary per user in Redis. Invalidate on upload or delete. This avoids recalculating SUM queries on every request.
-
-4. **Queue-based uploads** — For very high concurrency, move file processing to a background queue (Laravel Jobs). The API accepts the request and returns immediately, while the actual storage check and insert happen in a worker.
-
-5. **Horizontal scaling** — Run multiple Laravel instances behind a load balancer. Since concurrency is handled via database locks (not application-level locks), this works without code changes.
-
-6. **Partitioning** — If the files table grows very large, partition it by `user_id` so queries for a single user only scan a smaller partition.
-
----
 
 ## Assumptions
 
